@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Catálogo de Produtos - Conveniência</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background-color: #f4f4f4; }
+        .container { max-width: 800px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+        h1, h2 { text-align: center; }
+        form { display: flex; flex-direction: column; gap: 10px; }
+        input, select, button { padding: 10px; font-size: 16px; }
+        button { background-color: #4CAF50; color: white; border: none; cursor: pointer; }
+        button:hover { background-color: #45a049; }
+        .hidden { display: none; }
+        .sector-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
+        .sector-card { background: #e0e0e0; padding: 15px; border-radius: 5px; cursor: pointer; }
+        .product-list { list-style: none; padding: 0; }
+        .product-item { background: #fff; margin: 10px 0; padding: 10px; border: 1px solid #ddd; border-radius: 5px; display: flex; justify-content: space-between; align-items: center; }
+        .admin-only { display: none; } /* Escondido por padrão, mostrado para admin */
+        #search-bar { width: 100%; margin-bottom: 20px; }
+    </style>
+</head>
+<body>
+
+<div class="container" id="login-screen">
+    <h1>Login - Catálogo de Produtos</h1>
+    <form id="login-form">
+        <input type="text" id="username" placeholder="Usuário" required>
+        <input type="password" id="password" placeholder="Senha" required>
+        <button type="submit">Entrar</button>
+    </form>
+</div>
+
+<div class="container hidden" id="dashboard">
+    <h1>Catálogo de Produtos</h1>
+    <input type="text" id="search-bar" placeholder="Buscar por código reduzido ou nome...">
+    <div class="sector-list" id="sector-list"></div>
+    <div id="product-view" class="hidden">
+        <h2 id="sector-title"></h2>
+        <ul id="product-list" class="product-list"></ul>
+        <div class="admin-only">
+            <h3>Adicionar Produto</h3>
+            <form id="add-product-form">
+                <input type="number" id="new-code" placeholder="Código Reduzido (números)" required>
+                <input type="text" id="new-name" placeholder="Nome do Produto" required>
+                <button type="submit">Adicionar</button>
+            </form>
+        </div>
+        <button id="back-to-sectors">Voltar para Setores</button>
+        <div class="admin-only">
+            <h3>Adicionar Setor</h3>
+            <form id="add-sector-form">
+                <input type="text" id="new-sector-name" placeholder="Nome do Novo Setor" required>
+                <button type="submit">Adicionar</button>
+            </form>
+        </div>
+    </div>
+    <button id="logout">Sair</button>
+</div>
+
+<script>
+    // Dados mockados iniciais (armazenados no localStorage para persistência e offline)
+    const defaultData = {
+        sectors: [
+            { name: 'Bebidas', products: [{ code: 1001, name: 'Coca-Cola' }, { code: 1002, name: 'Água Mineral' }] },
+            { name: 'Bazar', products: [{ code: 2001, name: 'Pilhas AA' }, { code: 2002, name: 'Fita Adesiva' }] },
+            { name: 'Bomboniere', products: [{ code: 3001, name: 'Chocolate KitKat' }, { code: 3002, name: 'Bala Halls' }] }
+            // Adicione mais setores aqui conforme necessário
+        ],
+        users: {
+            admin: { password: 'admin123', role: 'admin' }, // Para teste: usuário 'admin', senha 'admin123'
+            funcionario: { password: 'func123', role: 'funcionario' } // Para teste: usuário 'funcionario', senha 'func123'
+        }
+    };
+
+    // Inicializa dados no localStorage se não existirem
+    if (!localStorage.getItem('catalogData')) {
+        localStorage.setItem('catalogData', JSON.stringify(defaultData));
+    }
+
+    let currentUserRole = null;
+    let currentSector = null;
+
+    // Função para carregar dados
+    function loadData() {
+    return JSON.parse(localStorage.getItem('catalogData'));
+    }
+
+    // Função para salvar dados
+    function saveData(data) {
+        localStorage.setItem('catalogData', JSON.stringify(data));
+    }
+
+    // Login
+    document.getElementById('login-form').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const username = document.getElementById('username').value;
+        const password = document.getElementById('password').value;
+        const data = loadData();
+        if (data.users[username] && data.users[username].password === password) {
+            currentUserRole = data.users[username].role;
+            document.getElementById('login-screen').classList.add('hidden');
+            document.getElementById('dashboard').classList.remove('hidden');
+            renderSectors();
+            if (currentUserRole === 'admin') {
+                document.querySelectorAll('.admin-only').forEach(el => el.style.display = 'block');
+            }
+        } else {
+            alert('Usuário ou senha inválidos!');
+        }
+    });
+    // Adicionar setor
+    document.getElementById('add-sector-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const newName = document.getElementById('new-sector-name').value.trim();
+    if (!newName) {
+        alert('Nome do setor é obrigatório!');
+        return;
+    }
+    const data = loadData();
+    if (data.sectors.some(s => s.name.toLowerCase() === newName.toLowerCase())) {
+        alert('Setor já existe!');
+        return;
+    }
+    data.sectors.push({ name: newName, products: [] });
+    saveData(data);
+    renderSectors();
+    document.getElementById('new-sector-name').value = '';
+});
+    // Renderizar lista de setores
+    function renderSectors() {
+        const sectorList = document.getElementById('sector-list');
+        sectorList.innerHTML = '';
+        const data = loadData();
+        data.sectors.forEach(sector => {
+        const card = document.createElement('div');
+        card.classList.add('sector-card');
+        card.textContent = sector.name;
+        if (currentUserRole === 'admin') {
+        const removeBtn = document.createElement('button');
+        removeBtn.textContent = 'Remover';
+        removeBtn.style.marginLeft = '10px';
+        removeBtn.onclick = (e) => {
+        e.stopPropagation(); // Evita clicar no card
+        removeSector(sector.name);
+    };
+    card.appendChild(removeBtn);
+}
+            card.addEventListener('click', () => showProducts(sector.name));
+            sectorList.appendChild(card);
+        });
+        document.getElementById('product-view').classList.add('hidden');
+        sectorList.style.display = 'grid';
+    }
+
+    // Mostrar produtos de um setor
+    function showProducts(sectorName) {
+        currentSector = sectorName;
+        document.getElementById('sector-list').style.display = 'none';
+        document.getElementById('product-view').classList.remove('hidden');
+        document.getElementById('sector-title').textContent = sectorName;
+        renderProducts();
+    }
+
+    // Renderizar lista de produtos
+    function renderProducts(searchTerm = '') {
+        const productList = document.getElementById('product-list');
+        productList.innerHTML = '';
+        const data = loadData();
+        const sector = data.sectors.find(s => s.name === currentSector);
+        sector.products
+            .filter(p => p.name.toLowerCase().includes(searchTerm.toLowerCase()) || p.code.toString().includes(searchTerm))
+            .forEach(product => {
+                const li = document.createElement('li');
+                li.classList.add('product-item');
+                li.innerHTML = `<span>Código: ${product.code} - ${product.name}</span>`;
+                if (currentUserRole === 'admin') {
+                    const removeBtn = document.createElement('button');
+                    removeBtn.textContent = 'Remover';
+                    removeBtn.onclick = () => removeProduct(product.code);
+                    li.appendChild(removeBtn);
+                }
+                productList.appendChild(li);
+            });
+    }
+
+    // Adicionar produto
+    document.getElementById('add-product-form').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const code = parseInt(document.getElementById('new-code').value);
+        const name = document.getElementById('new-name').value;
+        if (isNaN(code) || code <= 0) {
+            alert('Código deve ser um número positivo!');
+            return;
+        }
+        const data = loadData();
+        const sector = data.sectors.find(s => s.name === currentSector);
+        if (sector.products.some(p => p.code === code)) {
+            alert('Código já existe!');
+            return;
+        }
+        sector.products.push({ code, name });
+        saveData(data);
+        renderProducts();
+        document.getElementById('new-code').value = '';
+        document.getElementById('new-name').value = '';
+    });
+
+    // Remover produto
+    function removeProduct(code) {
+        if (confirm('Remover este produto?')) {
+            const data = loadData();
+            const sector = data.sectors.find(s => s.name === currentSector);
+            sector.products = sector.products.filter(p => p.code !== code);
+            saveData(data);
+            renderProducts();
+        }
+    }
+    // Remover setor
+    function removeSector(sectorName) {
+    if (confirm(`Remover o setor "${sectorName}"? Isso removerá todos os produtos nele!`)) {
+        const data = loadData();
+        const sector = data.sectors.find(s => s.name === sectorName);
+        if (sector && sector.products.length > 0) {
+            if (!confirm('O setor tem produtos. Tem certeza?')) return;
+        }
+        data.sectors = data.sectors.filter(s => s.name !== sectorName);
+        saveData(data);
+        renderSectors();
+        }
+    }
+
+    // Busca global
+    document.getElementById('search-bar').addEventListener('input', (e) => {
+        if (currentSector) {
+            renderProducts(e.target.value);
+        }
+    });
+
+    // Voltar para setores
+    document.getElementById('back-to-sectors').addEventListener('click', renderSectors);
+
+    // Logout
+    document.getElementById('logout').addEventListener('click', () => {
+        currentUserRole = null;
+        document.getElementById('dashboard').classList.add('hidden');
+        document.getElementById('login-screen').classList.remove('hidden');
+        document.querySelectorAll('.admin-only').forEach(el => el.style.display = 'none');
+    });
+</script>
+
+</body>
+</html>
